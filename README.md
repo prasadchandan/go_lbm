@@ -19,7 +19,7 @@ This was a project that was created primarily to learn golang. It uses [gomobile
   - Alternatively, use `make` along with the provided `Makefile`
 
 ### Demo
-    ![Go LBM Demo](repo-assets/demo.gif)
+    ![Go LBM Demo](https://github.com/prasadchandan/go_lbm/blob/master/repo-assets/demo.gif)
 
 ### Credits
 
