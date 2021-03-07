@@ -15,7 +15,7 @@ This was a project that was created primarily to learn golang. It uses [gomobile
   - Build mobile applications
     + iOS - `gomobile build -target=ios .`
     + Android - `gomobile build -target=android .`
-    + For more infomration on building for mobile applications, refer to gomobile docs.
+    + For more information on building for mobile applications, refer to gomobile docs.
   - Alternatively, use `make` along with the provided `Makefile`
 
 ### Demo
