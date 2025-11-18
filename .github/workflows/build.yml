@@ -66,7 +66,7 @@ jobs:
           check-latest: true
 
       - name: Install Linux dependencies
-        if: matrix.os == 'linux'
+        if: matrix.os == 'linux' && matrix.arch == 'amd64'
         run: |
           sudo apt-get update
           sudo apt-get install -y libegl1-mesa-dev libgles2-mesa-dev libx11-dev
@@ -74,7 +74,10 @@ jobs:
       - name: Install cross-compilation tools (Linux ARM64)
         if: matrix.os == 'linux' && matrix.arch == 'arm64'
         run: |
+          sudo dpkg --add-architecture arm64
+          sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+          sudo apt-get install -y libegl1-mesa-dev:arm64 libgles2-mesa-dev:arm64 libx11-dev:arm64
 
       - name: Build
         env:
@@ -83,6 +86,7 @@ jobs:
           CGO_ENABLED: 1
           CC: ${{ matrix.os == 'linux' && matrix.arch == 'arm64' && 'aarch64-linux-gnu-gcc' || '' }}
           CXX: ${{ matrix.os == 'linux' && matrix.arch == 'arm64' && 'aarch64-linux-gnu-g++' || '' }}
+          PKG_CONFIG_PATH: ${{ matrix.os == 'linux' && matrix.arch == 'arm64' && '/usr/lib/aarch64-linux-gnu/pkgconfig' || '' }}
         run: |
           if [ "${{ matrix.os }}" = "windows" ]; then
             go build -v -o go_lbm-${{ matrix.os }}-${{ matrix.arch }}.exe .
@@ -90,15 +94,18 @@ jobs:
             go build -v -o go_lbm-${{ matrix.os }}-${{ matrix.arch }} .
           fi
         shell: bash
-        continue-on-error: ${{ matrix.os == 'windows' && matrix.arch == 'arm64' }}
+        continue-on-error: ${{ (matrix.os == 'windows' && matrix.arch == 'arm64') || (matrix.os == 'linux' && matrix.arch == 'arm64') }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
+        if: success() || (failure() && matrix.os == 'windows' && matrix.arch == 'arm64') || (failure() && matrix.os == 'linux' && matrix.arch == 'arm64')
+        continue-on-error: true
         with:
           name: go_lbm-${{ matrix.os }}-${{ matrix.arch }}
           path: |
             go_lbm-${{ matrix.os }}-${{ matrix.arch }}*
           retention-days: 30
+          if-no-files-found: warn
 
   build-mobile:
     name: Build Mobile (${{ matrix.platform }})
