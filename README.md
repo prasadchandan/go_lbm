@@ -106,7 +106,7 @@ This project uses GitHub Actions for automated building and releases:
 - **Multi-platform Builds**: Automated builds for all supported platforms
   - Desktop: Windows, macOS, Linux (x86_64 and ARM64)
   - Mobile: Android and iOS
-  - **Note**: Linux ARM64 and Windows ARM64 builds are experimental due to cross-compilation complexity with CGO
+  - **Note**: Windows ARM64 builds are experimental due to cross-compilation complexity with CGO
 
 - **Automated Releases**: Create a tag starting with `v` to trigger a release
   ```bash
