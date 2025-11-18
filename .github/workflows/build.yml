@@ -1,0 +1,199 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [ main, master ]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-desktop:
+    name: Build Desktop (${{ matrix.os }}-${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          # Linux builds
+          - os: linux
+            arch: amd64
+            runner: ubuntu-latest
+            goos: linux
+            goarch: amd64
+          - os: linux
+            arch: arm64
+            runner: ubuntu-latest
+            goos: linux
+            goarch: arm64
+
+          # Windows builds
+          - os: windows
+            arch: amd64
+            runner: windows-latest
+            goos: windows
+            goarch: amd64
+          - os: windows
+            arch: arm64
+            runner: windows-latest
+            goos: windows
+            goarch: arm64
+
+          # macOS builds
+          - os: darwin
+            arch: amd64
+            runner: macos-13
+            goos: darwin
+            goarch: amd64
+          - os: darwin
+            arch: arm64
+            runner: macos-latest
+            goos: darwin
+            goarch: arm64
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          check-latest: true
+
+      - name: Install Linux dependencies
+        if: matrix.os == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1-mesa-dev libgles2-mesa-dev libx11-dev
+
+      - name: Install cross-compilation tools (Linux ARM64)
+        if: matrix.os == 'linux' && matrix.arch == 'arm64'
+        run: |
+          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 1
+          CC: ${{ matrix.os == 'linux' && matrix.arch == 'arm64' && 'aarch64-linux-gnu-gcc' || '' }}
+          CXX: ${{ matrix.os == 'linux' && matrix.arch == 'arm64' && 'aarch64-linux-gnu-g++' || '' }}
+        run: |
+          if [ "${{ matrix.os }}" = "windows" ]; then
+            go build -v -o go_lbm-${{ matrix.os }}-${{ matrix.arch }}.exe .
+          else
+            go build -v -o go_lbm-${{ matrix.os }}-${{ matrix.arch }} .
+          fi
+        shell: bash
+        continue-on-error: ${{ matrix.os == 'windows' && matrix.arch == 'arm64' }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: go_lbm-${{ matrix.os }}-${{ matrix.arch }}
+          path: |
+            go_lbm-${{ matrix.os }}-${{ matrix.arch }}*
+          retention-days: 30
+
+  build-mobile:
+    name: Build Mobile (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - platform: android
+            runner: ubuntu-latest
+            target: android
+            output: go_lbm.apk
+          - platform: ios
+            runner: macos-latest
+            target: ios
+            output: go_lbm.app
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          check-latest: true
+
+      - name: Install gomobile
+        run: |
+          go install golang.org/x/mobile/cmd/gomobile@latest
+          go install golang.org/x/mobile/cmd/gobind@latest
+          gomobile init
+
+      - name: Install Android NDK
+        if: matrix.platform == 'android'
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r26d
+          add-to-path: true
+          local-cache: true
+
+      - name: Set up Android SDK
+        if: matrix.platform == 'android'
+        uses: android-actions/setup-android@v3
+
+      - name: Install Linux dependencies (for Android build)
+        if: matrix.platform == 'android'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1-mesa-dev libgles2-mesa-dev libx11-dev
+
+      - name: Set up Xcode
+        if: matrix.platform == 'ios'
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Build for ${{ matrix.platform }}
+        run: |
+          export PATH=$PATH:$(go env GOPATH)/bin
+          gomobile build -target=${{ matrix.target }} -o ${{ matrix.output }} .
+        env:
+          CGO_ENABLED: 1
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: go_lbm-${{ matrix.platform }}
+          path: ${{ matrix.output }}
+          retention-days: 30
+
+  release:
+    name: Create Release
+    needs: [build-desktop, build-mobile]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Display structure of downloaded files
+        run: ls -R artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/**/*
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
